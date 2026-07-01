@@ -119,7 +119,10 @@ GENERATION_OUTPUT_DIR = DATA_DIR / "generation_cache" / "outputs"
 # T4(14.56GB 가용 VRAM) 기준: SDXL+ControlNetUnion+IP-Adapter 가중치만 fp16으로
 # ~14GB를 써서 1024 해상도는 활성화 메모리 여유가 거의 없어(OOM) 768로 낮춤
 GENERATION_IMAGE_SIZE = 768
-DEFAULT_NUM_CANDIDATES = 4
+# 무료 Colab T4는 시스템 RAM(~12.7GB)이 SDXL+ControlNet 2개+IP-Adapter 가중치(~12GB)만으로도
+# 거의 꽉 차서 4장 연속 생성 시 세션이 죽을 수 있음. 안정화 전까지는 2장으로 낮춰서 테스트
+# (그래도 죽으면 1로). Colab Pro(High-RAM)면 다시 4로 올려도 됨.
+DEFAULT_NUM_CANDIDATES = 2
 DEFAULT_INFERENCE_STEPS = 30
 
 BASE_NEGATIVE_PROMPT = (

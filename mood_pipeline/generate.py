@@ -188,8 +188,9 @@ def _load_pipeline():
     )
     pipe.set_ip_adapter_scale(0.5)
     pipe.enable_model_cpu_offload()  # T4 16GB 대응 (VRAM 절약, 속도는 다소 느려짐)
-    pipe.enable_attention_slicing()  # 어텐션 피크 메모리 절감
-    pipe.enable_vae_slicing()  # VAE 디코딩 피크 메모리 절감
+    # 주의: enable_attention_slicing()은 IP-Adapter의 어텐션 프로세서를 덮어써서
+    # "encoder_hidden_states가 tuple"이라 AttributeError가 나는 충돌이 있어 쓰지 않음.
+    pipe.enable_vae_slicing()  # VAE 디코딩 피크 메모리 절감 (UNet 어텐션과 무관해 안전)
 
     _pipeline_cache = pipe
     return pipe

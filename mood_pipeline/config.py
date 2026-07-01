@@ -115,7 +115,9 @@ GENERATION_CACHE_DIR = DATA_DIR / "generation_cache" / "guides"
 # 생성된 후보 이미지 + 메타데이터 저장 폴더 (역시 Colab에서 Drive 경로로 덮어쓰기 권장)
 GENERATION_OUTPUT_DIR = DATA_DIR / "generation_cache" / "outputs"
 
-GENERATION_IMAGE_SIZE = 1024  # SDXL 기본 해상도
+# T4(14.56GB 가용 VRAM) 기준: SDXL+ControlNetUnion+IP-Adapter 가중치만 fp16으로
+# ~14GB를 써서 1024 해상도는 활성화 메모리 여유가 거의 없어(OOM) 768로 낮춤
+GENERATION_IMAGE_SIZE = 768
 DEFAULT_NUM_CANDIDATES = 4
 DEFAULT_INFERENCE_STEPS = 30
 

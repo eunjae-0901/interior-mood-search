@@ -188,10 +188,12 @@ def _load_pipeline():
         weight_name=IP_ADAPTER_WEIGHT_NAME,
     )
     pipe.set_ip_adapter_scale(0.5)
-    # 주의: enable_model_cpu_offload()/enable_attention_slicing()은 IP-Adapter의 어텐션
-    # 프로세서를 건드려 같은 tuple 에러를 낼 수 있어 쓰지 않음. -small 컨트롤넷 2개로 바꿔서
-    # 전체 가중치가 가벼워졌으니 offload 없이 그냥 GPU에 올려도 T4 VRAM에 들어감.
-    pipe.to("cuda")
+    # 이전에 "tuple object has no attribute shape" 에러가 난 건 offload 자체 문제가 아니라
+    # StableDiffusionXLControlNetUnionPipeline이 IP-Adapter를 지원 안 해서였음. 표준
+    # ControlNet 파이프라인(IP-Adapter 정식 지원)으로 바꿨으니 offload를 다시 사용해서
+    # T4 VRAM(14.56GB)에 SDXL+ControlNet 2개+IP-Adapter가 한번에 다 안 올라가는 문제를 해결.
+    # (load_ip_adapter 이후에 호출해야 함 — 순서 중요)
+    pipe.enable_model_cpu_offload()
     pipe.enable_vae_slicing()  # VAE 디코딩 피크 메모리 절감 (UNet 어텐션과 무관해 안전)
 
     _pipeline_cache = pipe

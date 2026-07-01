@@ -12,6 +12,7 @@ if __name__ == "__main__" and not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     __package__ = "mood_pipeline"
 
+import gc
 import hashlib
 import json
 
@@ -98,6 +99,21 @@ def _get_detectors():
     return _detector_cache["canny"], _detector_cache["depth"]
 
 
+def _free_detectors():
+    # canny/depth 전처리기 + SDXL 파이프라인(IP-Adapter 포함)을 동시에 CPU에 올려두면
+    # Colab 무료 T4(시스템 RAM ~12.7GB)에서 OOM으로 세션이 죽는다.
+    # 가이드 추출이 끝나면 전처리기를 메모리에서 내려서 피크 사용량을 줄인다.
+    _detector_cache.clear()
+    gc.collect()
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except ImportError:
+        pass
+
+
 class GuideExtractor:
     """레퍼런스 이미지 1장 → (canny, depth) 가이드 이미지. 결과는 cache_dir에 캐싱."""
 
@@ -172,6 +188,8 @@ def _load_pipeline():
     )
     pipe.set_ip_adapter_scale(0.5)
     pipe.enable_model_cpu_offload()  # T4 16GB 대응 (VRAM 절약, 속도는 다소 느려짐)
+    pipe.enable_attention_slicing()  # 어텐션 피크 메모리 절감
+    pipe.enable_vae_slicing()  # VAE 디코딩 피크 메모리 절감
 
     _pipeline_cache = pipe
     return pipe
@@ -268,13 +286,20 @@ def generate_candidates(
 
     refs = _select_reference_images(prompt_en, mood_folder, num_candidates, exclude_ref_paths)
 
-    pipe = _load_pipeline()
+    # 1단계: canny/depth 가이드를 전부 먼저 뽑고 전처리기(Midas 등)를 메모리에서 내림.
+    # 전처리기 + SDXL 파이프라인을 동시에 CPU에 들고 있으면 Colab 무료 T4에서 RAM이 터짐.
     extractor = GuideExtractor()
+    guides_by_ref = [extractor.extract(MOOD_LIBRARY_DIR / ref["path"]) for ref in refs]
+    _free_detectors()
+
+    # 2단계: 그제야 SDXL+ControlNetUnion+IP-Adapter 파이프라인을 로드해서 순차 생성
+    pipe = _load_pipeline()
+
+    from PIL import Image
 
     candidates = []
-    for i, ref in enumerate(refs):
+    for i, (ref, guides) in enumerate(zip(refs, guides_by_ref)):
         ref_path = MOOD_LIBRARY_DIR / ref["path"]
-        guides = extractor.extract(ref_path)
 
         if seed_base is not None:
             seed = seed_base + i
@@ -282,8 +307,6 @@ def generate_candidates(
         else:
             generator = torch.Generator()
             seed = generator.seed()  # OS 랜덤에서 시드 뽑고 그 값을 그대로 기록 (재현용)
-
-        from PIL import Image
 
         result_image = pipe(
             prompt=positive_prompt,
@@ -298,6 +321,10 @@ def generate_candidates(
             width=GENERATION_IMAGE_SIZE,
             generator=generator,
         ).images[0]
+
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         candidates.append({
             "index": i,

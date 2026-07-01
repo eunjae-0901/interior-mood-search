@@ -107,6 +107,9 @@ CONTROLNET_DEPTH_MODEL_ID = "diffusers/controlnet-depth-sdxl-1.0-small"
 IP_ADAPTER_REPO_ID = "h94/IP-Adapter"
 IP_ADAPTER_SUBFOLDER = "sdxl_models"
 IP_ADAPTER_WEIGHT_NAME = "ip-adapter_sdxl.bin"
+# 0.5는 레퍼런스 사진의 식물/장식 같은 요소까지 그대로 따라와서 텍스트 프롬프트와 안 맞는
+# 물건이 끼어드는 경향이 있어 낮춤. 스타일/톤은 유지하되 내용은 텍스트가 주도하게.
+IP_ADAPTER_SCALE = 0.3
 # Depth 전처리 모델 (controlnet_aux)
 DEPTH_DETECTOR_MODEL_ID = "lllyasviel/Annotators"
 
@@ -119,15 +122,15 @@ GENERATION_OUTPUT_DIR = DATA_DIR / "generation_cache" / "outputs"
 # T4(14.56GB 가용 VRAM) 기준: SDXL+ControlNetUnion+IP-Adapter 가중치만 fp16으로
 # ~14GB를 써서 1024 해상도는 활성화 메모리 여유가 거의 없어(OOM) 768로 낮춤
 GENERATION_IMAGE_SIZE = 768
-# 무료 Colab T4는 시스템 RAM(~12.7GB)이 SDXL+ControlNet 2개+IP-Adapter 가중치(~12GB)만으로도
-# 거의 꽉 차서 4장 연속 생성 시 세션이 죽을 수 있음. 안정화 전까지는 2장으로 낮춰서 테스트
-# (그래도 죽으면 1로). Colab Pro(High-RAM)면 다시 4로 올려도 됨.
-DEFAULT_NUM_CANDIDATES = 2
+DEFAULT_NUM_CANDIDATES = 4
 DEFAULT_INFERENCE_STEPS = 30
 
 BASE_NEGATIVE_PROMPT = (
     "blurry, cartoon, illustration, distorted, low quality, oversaturated, "
-    "watermark, text, logo, extra walls, warped perspective"
+    "watermark, text, logo, extra walls, warped perspective, "
+    "cluttered, mismatched furniture, illogical furniture placement, "
+    "floating furniture, furniture overlapping, impossible room layout, "
+    "random unrelated objects, extra plants, extra decorations not mentioned"
 )
 
 # 무드별 생성 프리셋 — controlnet_scale: [canny(구조), depth(공간감)]

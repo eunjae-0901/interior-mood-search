@@ -29,6 +29,7 @@ from .config import (
     GENERATION_OUTPUT_DIR,
     HIGH_CEILING_HEIGHT_M,
     IP_ADAPTER_REPO_ID,
+    IP_ADAPTER_SCALE,
     IP_ADAPTER_SUBFOLDER,
     IP_ADAPTER_WEIGHT_NAME,
     LOW_CEILING_HEIGHT_M,
@@ -187,7 +188,7 @@ def _load_pipeline():
         subfolder=IP_ADAPTER_SUBFOLDER,
         weight_name=IP_ADAPTER_WEIGHT_NAME,
     )
-    pipe.set_ip_adapter_scale(0.5)
+    pipe.set_ip_adapter_scale(IP_ADAPTER_SCALE)
     # 이전에 "tuple object has no attribute shape" 에러가 난 건 offload 자체 문제가 아니라
     # StableDiffusionXLControlNetUnionPipeline이 IP-Adapter를 지원 안 해서였음. 표준
     # ControlNet 파이프라인(IP-Adapter 정식 지원)으로 바꿨으니 offload를 다시 사용해서

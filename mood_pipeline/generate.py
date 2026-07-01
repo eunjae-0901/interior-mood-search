@@ -316,7 +316,7 @@ def generate_candidates(
         result_image = pipe(
             prompt=positive_prompt,
             negative_prompt=negative_prompt,
-            control_image=[guides["canny"], guides["depth"]],
+            image=[guides["canny"], guides["depth"]],
             controlnet_conditioning_scale=preset["controlnet_scale"],
             ip_adapter_image=Image.open(ref_path).convert("RGB"),
             guidance_scale=preset["guidance_scale"],

@@ -9,3 +9,11 @@ umap-learn
 matplotlib
 tqdm
 deep-translator
+
+# Model 1 이미지 생성 (SDXL + ControlNetUnion + IP-Adapter) — Colab GPU 전용
+diffusers>=0.31.0
+accelerate
+safetensors
+controlnet-aux
+opencv-python
+invisible-watermark

@@ -88,3 +88,128 @@ SLUG_MAP = {
     "luxury modern studio apartment": "luxury_modern",
     "cute pastel room decor": "cute_pastel",
 }
+
+# ============================================================
+# Model 1 이미지 생성 (SDXL + ControlNetUnion + IP-Adapter)
+# ============================================================
+# Colab GPU 전제 — 로컬 CPU 환경에서는 import만 되고 실제 파이프라인은 안 돌아감
+
+# SDXL 베이스 모델
+SDXL_BASE_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
+# fp16 SDXL과 궁합이 맞는 VAE (기본 VAE는 fp16에서 NaN 나는 이슈가 있어 대체)
+SDXL_VAE_ID = "madebyollin/sdxl-vae-fp16-fix"
+# canny/mlsd/lineart(3) + depth(1) 두 조건을 하나의 체크포인트로 커버 (VRAM 절약, T4 16GB 대응)
+CONTROLNET_UNION_MODEL_ID = "xinsir/controlnet-union-sdxl-1.0"
+# xinsir ControlNetUnion control_mode: 0 openpose, 1 depth, 2 thick line, 3 thin line(canny/mlsd/lineart), 4 normal, 5 segment
+CONTROLNET_MODE_CANNY = 3
+CONTROLNET_MODE_DEPTH = 1
+IP_ADAPTER_REPO_ID = "h94/IP-Adapter"
+IP_ADAPTER_SUBFOLDER = "sdxl_models"
+IP_ADAPTER_WEIGHT_NAME = "ip-adapter_sdxl.bin"
+# Depth 전처리 모델 (controlnet_aux)
+DEPTH_DETECTOR_MODEL_ID = "lllyasviel/Annotators"
+
+# 가이드(canny/depth) 이미지 캐시 폴더 — Colab에서는 config 임포트 후
+# mood_pipeline.config.GENERATION_CACHE_DIR = Path("/content/drive/MyDrive/.../guides") 로 덮어써서 Drive에 영구 저장
+GENERATION_CACHE_DIR = DATA_DIR / "generation_cache" / "guides"
+# 생성된 후보 이미지 + 메타데이터 저장 폴더 (역시 Colab에서 Drive 경로로 덮어쓰기 권장)
+GENERATION_OUTPUT_DIR = DATA_DIR / "generation_cache" / "outputs"
+
+GENERATION_IMAGE_SIZE = 1024  # SDXL 기본 해상도
+DEFAULT_NUM_CANDIDATES = 4
+DEFAULT_INFERENCE_STEPS = 30
+
+BASE_NEGATIVE_PROMPT = (
+    "blurry, cartoon, illustration, distorted, low quality, oversaturated, "
+    "watermark, text, logo, extra walls, warped perspective"
+)
+
+# 무드별 생성 프리셋 — controlnet_scale: [canny(구조), depth(공간감)]
+MOOD_GEN_PRESETS = {
+    "warm_cozy": {
+        "controlnet_scale": [0.55, 0.5],
+        "guidance_scale": 6.5,
+        "prompt_suffix": "warm lighting, wooden textures, cozy atmosphere",
+    },
+    "minimal_white": {
+        "controlnet_scale": [0.7, 0.55],
+        "guidance_scale": 7.5,
+        "prompt_suffix": "clean lines, white walls, minimal furniture",
+    },
+    "modern_grey": {
+        "controlnet_scale": [0.65, 0.55],
+        "guidance_scale": 7.0,
+        "prompt_suffix": "industrial grey tones, concrete texture, modern fixtures",
+    },
+    "natural_wood": {
+        "controlnet_scale": [0.6, 0.5],
+        "guidance_scale": 6.5,
+        "prompt_suffix": "natural wood furniture, warm neutral tones, plants",
+    },
+    "soft_beige": {
+        "controlnet_scale": [0.55, 0.45],
+        "guidance_scale": 6.5,
+        "prompt_suffix": "soft beige palette, feminine textures, gentle lighting",
+    },
+    "dark_moody": {
+        "controlnet_scale": [0.65, 0.55],
+        "guidance_scale": 7.5,
+        "prompt_suffix": "dark moody tones, low-key lighting, matte finishes",
+    },
+    "bright_airy": {
+        "controlnet_scale": [0.55, 0.45],
+        "guidance_scale": 6.5,
+        "prompt_suffix": "bright natural light, airy open feel, light tones",
+    },
+    "vintage_retro": {
+        "controlnet_scale": [0.6, 0.5],
+        "guidance_scale": 7.0,
+        "prompt_suffix": "vintage retro furniture, warm film-like tones",
+    },
+    "monochrome_minimal": {
+        "controlnet_scale": [0.7, 0.55],
+        "guidance_scale": 7.5,
+        "prompt_suffix": "monochrome palette, minimal decor, sharp lines",
+    },
+    "plant_green": {
+        "controlnet_scale": [0.55, 0.5],
+        "guidance_scale": 6.5,
+        "prompt_suffix": "lush indoor plants, green accents, natural light",
+    },
+    "luxury_modern": {
+        "controlnet_scale": [0.65, 0.55],
+        "guidance_scale": 8.0,
+        "prompt_suffix": "high-end materials, marble, gold accents",
+    },
+    "cute_pastel": {
+        "controlnet_scale": [0.5, 0.4],
+        "guidance_scale": 6.0,
+        "prompt_suffix": "soft pastel colors, plush textures, playful decor",
+    },
+}
+# 프리셋 없는 무드용 기본값 (MOOD_GEN_PRESETS에 키가 없을 때)
+DEFAULT_GEN_PRESET = {
+    "controlnet_scale": [0.6, 0.5],
+    "guidance_scale": 7.0,
+    "prompt_suffix": "",
+}
+
+# 방 크기(㎡) 구간별 스케일 가드 — "5x7 원룸에 대저택 거실"처럼
+# 실제 방 크기와 안 맞는 비현실적 스케일이 나오지 않도록 프롬프트에 강제 주입
+ROOM_SIZE_BRACKETS = [
+    # (최대 바닥면적㎡, size_class, prompt_suffix, negative_suffix)
+    (10, "tiny_studio", "very small compact studio apartment room, tight space, single bed or small sofa scale furniture",
+     "spacious room, large hall, high ceiling, mansion, villa, oversized furniture, grand living room"),
+    (20, "small_studio", "small one-room studio apartment, compact human-scale furniture",
+     "spacious room, large hall, mansion, villa, oversized furniture, grand living room"),
+    (35, "mid_room", "modest one-room apartment, standard-scale furniture",
+     "mansion, villa, ballroom, palatial interior, oversized furniture"),
+    (60, "spacious_room", "moderately spacious one-room apartment",
+     "mansion, palatial interior, ballroom"),
+]
+ROOM_SIZE_FALLBACK = (
+    "large open-plan apartment",
+    "palatial mansion interior, ballroom",
+)
+LOW_CEILING_HEIGHT_M = 2.3  # 이 미만이면 "낮은 천장" 문구 추가
+HIGH_CEILING_HEIGHT_M = 2.8  # 이 초과면 "높은 천장" 허용 문구 추가

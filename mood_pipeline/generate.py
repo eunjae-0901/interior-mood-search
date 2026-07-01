@@ -187,9 +187,11 @@ def _load_pipeline():
         weight_name=IP_ADAPTER_WEIGHT_NAME,
     )
     pipe.set_ip_adapter_scale(0.5)
-    pipe.enable_model_cpu_offload()  # T4 16GB 대응 (VRAM 절약, 속도는 다소 느려짐)
-    # 주의: enable_attention_slicing()은 IP-Adapter의 어텐션 프로세서를 덮어써서
-    # "encoder_hidden_states가 tuple"이라 AttributeError가 나는 충돌이 있어 쓰지 않음.
+    # 주의: enable_model_cpu_offload()는 IP-Adapter와 함께 쓰면 accelerate 훅이
+    # encoder_hidden_states를 망가뜨려 "tuple object has no attribute shape" 에러가 남
+    # (diffusers #6914). T4는 VRAM이 16GB라 offload 없이 그냥 GPU에 올려도 fp16 기준 들어감.
+    pipe.to("cuda")
+    # 주의: enable_attention_slicing()도 IP-Adapter의 어텐션 프로세서를 덮어써서 같은 에러가 남.
     pipe.enable_vae_slicing()  # VAE 디코딩 피크 메모리 절감 (UNet 어텐션과 무관해 안전)
 
     _pipeline_cache = pipe

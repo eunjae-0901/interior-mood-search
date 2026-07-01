@@ -1,4 +1,4 @@
-# 사용자 텍스트 + 방 크기(WxDxH) → SDXL+ControlNetUnion+IP-Adapter로
+# 사용자 텍스트 + 방 크기(WxDxH) → SDXL+ControlNet(canny+depth)+IP-Adapter로
 # 기존 mood_library 레퍼런스를 스타일/구조 가이드 삼아 후보 이미지 N장 생성
 #
 # Colab GPU 전제. 로컬(CPU-only)에서는 이 모듈을 import는 할 수 있지만
@@ -18,9 +18,8 @@ import json
 
 from .config import (
     BASE_NEGATIVE_PROMPT,
-    CONTROLNET_MODE_CANNY,
-    CONTROLNET_MODE_DEPTH,
-    CONTROLNET_UNION_MODEL_ID,
+    CONTROLNET_CANNY_MODEL_ID,
+    CONTROLNET_DEPTH_MODEL_ID,
     DEFAULT_GEN_PRESET,
     DEFAULT_INFERENCE_STEPS,
     DEFAULT_NUM_CANDIDATES,
@@ -152,7 +151,7 @@ class GuideExtractor:
 
 
 # ============================================================
-# 3. SDXL + ControlNetUnion + IP-Adapter 파이프라인 (lazy singleton)
+# 3. SDXL + ControlNet(canny+depth) + IP-Adapter 파이프라인 (lazy singleton)
 # ============================================================
 
 _pipeline_cache = None
@@ -164,19 +163,21 @@ def _load_pipeline():
         return _pipeline_cache
 
     import torch
-    from diffusers import (
-        AutoencoderKL,
-        ControlNetUnionModel,
-        StableDiffusionXLControlNetUnionPipeline,
-    )
+    from diffusers import AutoencoderKL, ControlNetModel, StableDiffusionXLControlNetPipeline
 
-    controlnet = ControlNetUnionModel.from_pretrained(
-        CONTROLNET_UNION_MODEL_ID, torch_dtype=torch.float16
+    # 주의: xinsir/controlnet-union-sdxl-1.0 + StableDiffusionXLControlNetUnionPipeline은
+    # IP-Adapter를 제대로 지원하지 않아 "'tuple' object has no attribute 'shape'" 에러가 남.
+    # canny/depth 각각 공식 개별 ControlNet(-small)으로 분리 + 표준 파이프라인 사용.
+    canny_controlnet = ControlNetModel.from_pretrained(
+        CONTROLNET_CANNY_MODEL_ID, torch_dtype=torch.float16
+    )
+    depth_controlnet = ControlNetModel.from_pretrained(
+        CONTROLNET_DEPTH_MODEL_ID, torch_dtype=torch.float16
     )
     vae = AutoencoderKL.from_pretrained(SDXL_VAE_ID, torch_dtype=torch.float16)
-    pipe = StableDiffusionXLControlNetUnionPipeline.from_pretrained(
+    pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
         SDXL_BASE_MODEL_ID,
-        controlnet=controlnet,
+        controlnet=[canny_controlnet, depth_controlnet],
         vae=vae,
         torch_dtype=torch.float16,
         variant="fp16",
@@ -187,11 +188,10 @@ def _load_pipeline():
         weight_name=IP_ADAPTER_WEIGHT_NAME,
     )
     pipe.set_ip_adapter_scale(0.5)
-    # 주의: enable_model_cpu_offload()는 IP-Adapter와 함께 쓰면 accelerate 훅이
-    # encoder_hidden_states를 망가뜨려 "tuple object has no attribute shape" 에러가 남
-    # (diffusers #6914). T4는 VRAM이 16GB라 offload 없이 그냥 GPU에 올려도 fp16 기준 들어감.
+    # 주의: enable_model_cpu_offload()/enable_attention_slicing()은 IP-Adapter의 어텐션
+    # 프로세서를 건드려 같은 tuple 에러를 낼 수 있어 쓰지 않음. -small 컨트롤넷 2개로 바꿔서
+    # 전체 가중치가 가벼워졌으니 offload 없이 그냥 GPU에 올려도 T4 VRAM에 들어감.
     pipe.to("cuda")
-    # 주의: enable_attention_slicing()도 IP-Adapter의 어텐션 프로세서를 덮어써서 같은 에러가 남.
     pipe.enable_vae_slicing()  # VAE 디코딩 피크 메모리 절감 (UNet 어텐션과 무관해 안전)
 
     _pipeline_cache = pipe
@@ -295,7 +295,7 @@ def generate_candidates(
     guides_by_ref = [extractor.extract(MOOD_LIBRARY_DIR / ref["path"]) for ref in refs]
     _free_detectors()
 
-    # 2단계: 그제야 SDXL+ControlNetUnion+IP-Adapter 파이프라인을 로드해서 순차 생성
+    # 2단계: 그제야 SDXL+ControlNet(canny+depth)+IP-Adapter 파이프라인을 로드해서 순차 생성
     pipe = _load_pipeline()
 
     from PIL import Image
@@ -315,7 +315,6 @@ def generate_candidates(
             prompt=positive_prompt,
             negative_prompt=negative_prompt,
             control_image=[guides["canny"], guides["depth"]],
-            control_mode=[CONTROLNET_MODE_CANNY, CONTROLNET_MODE_DEPTH],
             controlnet_conditioning_scale=preset["controlnet_scale"],
             ip_adapter_image=Image.open(ref_path).convert("RGB"),
             guidance_scale=preset["guidance_scale"],

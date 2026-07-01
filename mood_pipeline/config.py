@@ -90,7 +90,7 @@ SLUG_MAP = {
 }
 
 # ============================================================
-# Model 1 이미지 생성 (SDXL + ControlNetUnion + IP-Adapter)
+# Model 1 이미지 생성 (SDXL + ControlNet(canny+depth) + IP-Adapter)
 # ============================================================
 # Colab GPU 전제 — 로컬 CPU 환경에서는 import만 되고 실제 파이프라인은 안 돌아감
 
@@ -98,11 +98,12 @@ SLUG_MAP = {
 SDXL_BASE_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
 # fp16 SDXL과 궁합이 맞는 VAE (기본 VAE는 fp16에서 NaN 나는 이슈가 있어 대체)
 SDXL_VAE_ID = "madebyollin/sdxl-vae-fp16-fix"
-# canny/mlsd/lineart(3) + depth(1) 두 조건을 하나의 체크포인트로 커버 (VRAM 절약, T4 16GB 대응)
-CONTROLNET_UNION_MODEL_ID = "xinsir/controlnet-union-sdxl-1.0"
-# xinsir ControlNetUnion control_mode: 0 openpose, 1 depth, 2 thick line, 3 thin line(canny/mlsd/lineart), 4 normal, 5 segment
-CONTROLNET_MODE_CANNY = 3
-CONTROLNET_MODE_DEPTH = 1
+# 주의: xinsir/controlnet-union-sdxl-1.0 + StableDiffusionXLControlNetUnionPipeline 조합은
+# IP-Adapter를 제대로 지원하지 않아 "'tuple' object has no attribute 'shape'" 에러가 남
+# (diffusers에서 IP-Adapter는 표준 StableDiffusionXLControlNetPipeline 위주로 지원됨).
+# 그래서 canny/depth를 각각의 공식 개별 ControlNet(-small, 가벼움)으로 분리해서 사용.
+CONTROLNET_CANNY_MODEL_ID = "diffusers/controlnet-canny-sdxl-1.0-small"
+CONTROLNET_DEPTH_MODEL_ID = "diffusers/controlnet-depth-sdxl-1.0-small"
 IP_ADAPTER_REPO_ID = "h94/IP-Adapter"
 IP_ADAPTER_SUBFOLDER = "sdxl_models"
 IP_ADAPTER_WEIGHT_NAME = "ip-adapter_sdxl.bin"

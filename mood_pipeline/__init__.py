@@ -8,6 +8,7 @@ from .search import (
     build_mood_text_embeddings,
     plot_search_result,
     search_images_within_mood,
+    search_images_within_moods,
     search_mood_by_prompt,
     search_mood_with_images,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "build_mood_text_embeddings",
     "search_mood_by_prompt",
     "search_images_within_mood",
+    "search_images_within_moods",
     "search_mood_with_images",
     "plot_search_result",
 ]

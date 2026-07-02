@@ -52,7 +52,9 @@ def _load_meta(folder_id: str) -> dict:
 
 
 def build_mood_search_text(index_entry: dict, meta: dict) -> str:
-    # index + meta 필드를 하나의 검색용 문장으로 합침
+    # index + meta 필드를 하나의 검색용 문장으로 합침.
+    # CLIP(openai/clip-vit-base-patch32)은 영어 전용 모델이라 name_ko/description
+    # 같은 한글 필드를 섞으면 노이즈 토큰이 되어 매칭 정확도가 떨어진다 → 영어 필드만 사용
     keywords = index_entry.get("keywords") or meta.get("tags") or []
     if isinstance(keywords, str):
         keywords = [k.strip() for k in keywords.split(",") if k.strip()]
@@ -62,9 +64,7 @@ def build_mood_search_text(index_entry: dict, meta: dict) -> str:
         typical = [typical]
 
     parts = [
-        index_entry.get("name_ko", ""),
         index_entry.get("name_en", ""),
-        index_entry.get("description", ""),
         ", ".join(keywords),
         ", ".join(typical),
         ", ".join(meta.get("tags") or []),
@@ -316,14 +316,16 @@ def search_mood_by_prompt(
     return results
 
 
-def search_images_within_mood(
+def search_images_within_moods(
     prompt: str,
-    mood_id: str,
+    mood_ids: list[str],
     top_k: int = 2,  # ★ 2차: gallery 추천 이미지 개수 (5장 원하면 5)
     translate_ko: bool = True,
     prepared: dict | None = None,
 ) -> list[dict]:
-    # 2차: 1위 무드 안 gallery ↔ 프롬프트 임베딩 → plot_search_result 아래쪽 figure
+    # 2차: 무드 1개가 아니라 top-N 무드 gallery를 합쳐서 프롬프트와 재정렬.
+    # 무드 하나로만 좁히면 프롬프트 디테일이 달라져도 항상 같은 좁은 풀에서만
+    # 고르게 돼서 추천이 비슷해지는 문제가 있어 인접 무드까지 후보에 포함한다.
     if not MOOD_REP_IMAGE_EMBEDDINGS_PATH.exists() or not MOOD_REP_IMAGES_PATH.exists():
         build_mood_text_embeddings(force=True)
 
@@ -331,10 +333,11 @@ def search_images_within_mood(
     rep_images = json.loads(MOOD_REP_IMAGES_PATH.read_text(encoding="utf-8"))
 
     # mood_id 또는 folder id 둘 다 매칭
+    mood_id_set = set(mood_ids)
     candidates = [
         (i, rec)
         for i, rec in enumerate(rep_images)
-        if rec["mood_id"] == mood_id or rec["id"] == mood_id
+        if rec["mood_id"] in mood_id_set or rec["id"] in mood_id_set
     ]
     if not candidates:
         return []
@@ -359,16 +362,30 @@ def search_images_within_mood(
     return _dedupe_image_results(results, top_k)
 
 
+def search_images_within_mood(
+    prompt: str,
+    mood_id: str,
+    top_k: int = 2,
+    translate_ko: bool = True,
+    prepared: dict | None = None,
+) -> list[dict]:
+    # 무드 1개짜리 검색 (하위 호환용 래퍼)
+    return search_images_within_moods(
+        prompt, [mood_id], top_k=top_k, translate_ko=translate_ko, prepared=prepared,
+    )
+
+
 def search_mood_with_images(
     prompt: str,
     top_k: int = 2,  # ★ 추천 gallery 이미지 개수 (5장 원하면 top_k=5). 1차 무드 cover는 항상 1개
+    mood_top_k: int = 2,  # ★ 2차 풀을 합칠 후보 무드 개수 (1이면 예전처럼 top-1 무드만)
     translate_ko: bool = True,
 ) -> dict:
     # 노트북/CLI 진입점 — 출력 장수는 top_k 하나만 조절
     prepared = prepare_prompt_for_search(prompt, translate_ko=translate_ko)
     moods = search_mood_by_prompt(
         prompt,
-        top_k=1,
+        top_k=mood_top_k,
         translate_ko=translate_ko,
         prepared=prepared,
     )
@@ -383,9 +400,9 @@ def search_mood_with_images(
         }
 
     selected = moods[0]
-    images = search_images_within_mood(
+    images = search_images_within_moods(
         prompt,
-        mood_id=selected["mood_id"],
+        mood_ids=[m["mood_id"] for m in moods],
         top_k=top_k,
         translate_ko=translate_ko,
         prepared=prepared,

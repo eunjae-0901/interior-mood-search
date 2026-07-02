@@ -16,6 +16,8 @@ import gc
 import hashlib
 import json
 
+import numpy as np
+
 from .config import (
     BASE_NEGATIVE_PROMPT,
     CONTROLNET_CANNY_MODEL_ID,
@@ -42,9 +44,12 @@ from .config import (
 )
 from .search import (
     prepare_prompt_for_search,
-    search_images_within_mood,
+    search_images_within_moods,
     search_mood_by_prompt,
 )
+
+# 1차 무드 매칭 후 2차 레퍼런스 풀을 합칠 후보 무드 개수 (1이면 top-1 무드로만 좁힘)
+MOOD_POOL_TOP_K = 2
 
 # ============================================================
 # 1. 방 크기 스케일 가드 — "5x7 원룸에 대저택 거실" 같은 비현실적 결과 방지
@@ -231,31 +236,43 @@ def build_generation_prompt(prompt_en: str, mood_id: str, room_guard: dict) -> t
 
 def _select_reference_images(
     prompt_for_search: str,
-    mood_id: str,
+    mood_ids: list[str],
     num_candidates: int,
     exclude_paths: set[str] | None = None,
+    rng: np.random.Generator | None = None,
 ) -> list[dict]:
     # 후보 수보다 넉넉히 뽑아서, 4장이 전부 같은 사진에서 나오지 않도록
-    # 서로 다른 레퍼런스 이미지를 하나씩 배정한다 (구조 다양성 확보)
+    # 서로 다른 레퍼런스 이미지를 하나씩 배정한다 (구조 다양성 확보).
+    # top-N 무드를 합친 풀에서, 유사도 순 고정 픽 대신 점수 가중 랜덤 샘플링을 써서
+    # 비슷한 프롬프트를 반복 요청해도 매번 똑같은 레퍼런스 사진만 나오지 않게 한다.
     exclude_paths = exclude_paths or set()
-    pool = search_images_within_mood(
-        prompt_for_search, mood_id=mood_id, top_k=max(num_candidates * 3, 8),
+    pool = search_images_within_moods(
+        prompt_for_search, mood_ids, top_k=max(num_candidates * 4, 12),
         translate_ko=False,
     )
     pool = [item for item in pool if item["path"] not in exclude_paths]
 
     if not pool:
         # 전부 제외됐으면(재생성 반복) 제외 없이 다시 조회
-        pool = search_images_within_mood(
-            prompt_for_search, mood_id=mood_id, top_k=max(num_candidates * 3, 8),
+        pool = search_images_within_moods(
+            prompt_for_search, mood_ids, top_k=max(num_candidates * 4, 12),
             translate_ko=False,
         )
 
     if not pool:
-        raise ValueError(f"무드 '{mood_id}'에 레퍼런스 이미지가 없습니다.")
+        raise ValueError(f"무드 {mood_ids}에 레퍼런스 이미지가 없습니다.")
 
+    rng = rng or np.random.default_rng()
+    scores = np.array([item["score"] for item in pool])
+    weights = np.exp((scores - scores.max()) / 0.1)  # softmax(temperature=0.1), 고득점에 가중치
+    weights = weights / weights.sum()
+
+    k = min(num_candidates, len(pool))
+    idx = rng.choice(len(pool), size=k, replace=False, p=weights)
+    refs = [pool[i] for i in idx]
     # num_candidates보다 pool이 작으면 순환시켜서라도 채움
-    refs = [pool[i % len(pool)] for i in range(num_candidates)]
+    while len(refs) < num_candidates:
+        refs.append(pool[len(refs) % len(pool)])
     return refs
 
 
@@ -278,19 +295,25 @@ def generate_candidates(
     prompt_en = prepared["prompt_for_search"]
 
     if mood_id is None:
-        top_moods = search_mood_by_prompt(prompt, top_k=1, translate_ko=False, prepared=prepared)
+        # 스타일/프리셋은 top-1 무드로 고정하되, 레퍼런스 사진 풀은 top-N 무드를 합쳐서
+        # 넓힌다 (top-1만 쓰면 프롬프트 디테일이 달라도 항상 같은 좁은 풀에서만 고르게 됨)
+        top_moods = search_mood_by_prompt(
+            prompt, top_k=MOOD_POOL_TOP_K, translate_ko=False, prepared=prepared,
+        )
         if not top_moods:
             raise ValueError("일치하는 무드를 찾지 못했습니다.")
         mood_id = top_moods[0]["mood_id"]
         mood_folder = top_moods[0]["id"]
+        mood_folders = [m["id"] for m in top_moods]
     else:
         mood_folder = mood_id
+        mood_folders = [mood_folder]  # 무드를 직접 지정한 경우엔 그 무드로만 좁힘
 
     room_guard = room_scale_guard(width_m, depth_m, height_m)
     positive_prompt, negative_prompt = build_generation_prompt(prompt_en, mood_id, room_guard)
     preset = _resolve_mood_preset(mood_id)
 
-    refs = _select_reference_images(prompt_en, mood_folder, num_candidates, exclude_ref_paths)
+    refs = _select_reference_images(prompt_en, mood_folders, num_candidates, exclude_ref_paths)
 
     # 1단계: canny/depth 가이드를 전부 먼저 뽑고 전처리기(Midas 등)를 메모리에서 내림.
     # 전처리기 + SDXL 파이프라인을 동시에 CPU에 들고 있으면 Colab 무료 T4에서 RAM이 터짐.

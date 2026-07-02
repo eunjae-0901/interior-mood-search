@@ -21,7 +21,7 @@ MOOD_REP_IMAGE_EMBEDDINGS_PATH = MOOD_LIBRARY_DIR / "mood_rep_image_embeddings.n
 MOOD_REP_IMAGES_PATH = MOOD_LIBRARY_DIR / "mood_rep_images.json"
 # gallery 전체 검색 인덱스 버전 (올리면 자동 재빌드)
 MOOD_SEARCH_INDEX_VERSION_PATH = MOOD_LIBRARY_DIR / "search_index_version.txt"
-SEARCH_INDEX_VERSION = 2
+SEARCH_INDEX_VERSION = 3
 
 # Hugging Face CLIP 모델 ID
 CLIP_MODEL_ID = "openai/clip-vit-base-patch32"

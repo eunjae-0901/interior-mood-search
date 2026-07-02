@@ -215,12 +215,38 @@ def _resolve_mood_preset(mood_id: str) -> dict:
     return MOOD_GEN_PRESETS.get(mood_id, DEFAULT_GEN_PRESET)
 
 
-def build_generation_prompt(prompt_en: str, mood_id: str, room_guard: dict) -> tuple[str, str]:
+# 1위-2위 무드 점수차가 이 이상이면 "확실한 매칭"으로 취급 (프리셋 문구를 그대로 적용)
+MOOD_MARGIN_CONFIDENT = 0.08
+# 매칭이 애매할 때도 controlnet/IP-Adapter 영향력을 완전히 0으로 죽이진 않고 이 비율까지만 낮춤
+MOOD_CONFIDENCE_FLOOR = 0.4
+
+
+def _mood_match_signal(top_moods: list[dict]) -> tuple[float, bool]:
+    """1위-2위 무드 점수차(margin)로 매칭 확신도를 계산.
+    "베이지·현대식인데 포인트로 파스�텔" 같은 문장은 CLIP이 '파스텔' 단어에 끌려가
+    cute_pastel을 1위로 뽑아버리는데, margin이 크지 않으면(=애매한 매칭이면) 그 무드의
+    프리셋/레퍼런스 영향력을 낮춰서 사용자가 실제로 쓴 프롬프트 쪽 비중을 높인다."""
+    if len(top_moods) < 2:
+        return 1.0, True
+    margin = top_moods[0]["score"] - top_moods[1]["score"]
+    is_confident = margin >= MOOD_MARGIN_CONFIDENT
+    frac = max(0.0, min(1.0, margin / MOOD_MARGIN_CONFIDENT))
+    confidence = MOOD_CONFIDENCE_FLOOR + (1 - MOOD_CONFIDENCE_FLOOR) * frac
+    return confidence, is_confident
+
+
+def build_generation_prompt(
+    prompt_en: str, mood_id: str, room_guard: dict, include_mood_preset: bool = True,
+) -> tuple[str, str]:
     preset = _resolve_mood_preset(mood_id)
+    # 매칭이 애매할 때(include_mood_preset=False)는 무드 프리셋 문구를 아예 빼서
+    # "soft pastel colors, plush textures..." 같은 문구가 사용자 프롬프트를 덮어쓰지 않게 한다.
+    # (일반 텍스트 프롬프트라 세기 조절이 안 되니 on/off로 처리)
+    preset_suffix = preset["prompt_suffix"] if include_mood_preset else ""
     positive = ", ".join(
         p for p in [
             prompt_en,
-            preset["prompt_suffix"],
+            preset_suffix,
             room_guard["prompt_suffix"],
             "photorealistic interior photo, 4k, professional real estate photography",
         ] if p
@@ -305,13 +331,22 @@ def generate_candidates(
         mood_id = top_moods[0]["mood_id"]
         mood_folder = top_moods[0]["id"]
         mood_folders = [m["id"] for m in top_moods]
+        mood_confidence, mood_confident = _mood_match_signal(top_moods)
     else:
         mood_folder = mood_id
         mood_folders = [mood_folder]  # 무드를 직접 지정한 경우엔 그 무드로만 좁힘
+        top_moods = []
+        mood_confidence, mood_confident = 1.0, True  # 직접 지정했으니 전체 강도로 적용
 
     room_guard = room_scale_guard(width_m, depth_m, height_m)
-    positive_prompt, negative_prompt = build_generation_prompt(prompt_en, mood_id, room_guard)
+    positive_prompt, negative_prompt = build_generation_prompt(
+        prompt_en, mood_id, room_guard, include_mood_preset=mood_confident,
+    )
     preset = _resolve_mood_preset(mood_id)
+    # 매칭이 애매하면 프리셋의 controlnet/IP-Adapter 강도도 같이 낮춰서, 확신 없는 무드의
+    # 레퍼런스 사진이 구조·색감을 과하게 강요하지 않게 한다.
+    controlnet_scale = [round(s * mood_confidence, 3) for s in preset["controlnet_scale"]]
+    ip_adapter_scale = round(IP_ADAPTER_SCALE * mood_confidence, 3)
 
     refs = _select_reference_images(prompt_en, mood_folders, num_candidates, exclude_ref_paths)
 
@@ -323,6 +358,9 @@ def generate_candidates(
 
     # 2단계: 그제야 SDXL+ControlNet(canny+depth)+IP-Adapter 파이프라인을 로드해서 순차 생성
     pipe = _load_pipeline()
+    # 파이프라인 로드시 고정으로 설정된 IP_ADAPTER_SCALE 대신, 이번 호출의 무드 확신도로
+    # 조정된 값을 적용 (diffusers는 호출 사이에 다시 설정하는 걸 허용)
+    pipe.set_ip_adapter_scale(ip_adapter_scale)
 
     from PIL import Image
 
@@ -341,7 +379,7 @@ def generate_candidates(
             prompt=positive_prompt,
             negative_prompt=negative_prompt,
             image=[guides["canny"], guides["depth"]],
-            controlnet_conditioning_scale=preset["controlnet_scale"],
+            controlnet_conditioning_scale=controlnet_scale,
             ip_adapter_image=Image.open(ref_path).convert("RGB"),
             guidance_scale=preset["guidance_scale"],
             num_inference_steps=num_inference_steps,
@@ -366,6 +404,8 @@ def generate_candidates(
         "prompt_en": prompt_en,
         "mood_id": mood_id,
         "mood_folder": mood_folder,
+        "mood_scores": top_moods,  # 자동 매칭이었을 때 top-N 무드·점수 (직접 지정 시 빈 리스트)
+        "mood_confidence": mood_confidence,  # 1.0=확실한 매칭, 낮을수록 프리셋/레퍼런스 영향력을 줄임
         "room": room_guard,
         "positive_prompt": positive_prompt,
         "negative_prompt": negative_prompt,

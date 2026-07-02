@@ -45,7 +45,7 @@ pip install -r requirements-ml.txt
 
 `images/final/`에 원룸 인테리어 이미지를 보관
 
-- 크롤러(선택): `pinterest_crawl.ipynb`, `pinterest_board_crawl.ipynb`
+- 크롤러(선택): `ohouse_crawl.ipynb`(오늘의집), `pinterest_board_crawl.ipynb`(Pinterest)
 - 수집 후 `images/final/`로 통합해 사용
 
 ### 2) 무드 라이브러리 만들기

@@ -70,7 +70,7 @@
 │   ├── 03_label.ipynb
 │   ├── 04_build_library.ipynb
 │   └── 05_search_mood.ipynb            # 프롬프트 검색 데모
-├── pinterest_crawl.ipynb               # 오늘의집 크롤러
+├── ohouse_crawl.ipynb                   # 오늘의집 크롤러
 ├── pinterest_board_crawl.ipynb         # Pinterest 보드 크롤러
 ├── run_pipeline.py                     # 전체 파이프라인 일괄 실행
 └── requirements-ml.txt
@@ -111,7 +111,7 @@
 
 | 노트북 | 소스 | 저장 경로 |
 |--------|------|-----------|
-| `pinterest_crawl.ipynb` | 오늘의집 피드 | `images/원룸_인테리어_오늘의집/` |
+| `ohouse_crawl.ipynb` | 오늘의집 "모던 인테리어" 피드 | `images/모던_인테리어_오늘의집/` |
 | `pinterest_board_crawl.ipynb` | Pinterest 보드 | `images/pinterest_원룸_인테리어/` |
 
 수집 후 `images/final/`로 통합해 파이프라인 입력으로 사용합니다. (`mood_pipeline/config.py` → `IMAGE_ROOT`)
@@ -371,7 +371,7 @@ notebooks/05_search_mood.ipynb
 ## 13. 기술 스택 요약
 
 ```
-크롤링:     Selenium (pinterest_crawl.ipynb, pinterest_board_crawl.ipynb)
+크롤링:     Selenium (ohouse_crawl.ipynb, pinterest_board_crawl.ipynb)
 임베딩:     transformers CLIP ViT-B/32 (이미지 + 텍스트)
 클러스터링: scikit-learn KMeans
 차원축소:   umap-learn (시각화)

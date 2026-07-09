@@ -1,7 +1,7 @@
 # 사용자 텍스트 + 방 크기(WxDxH) → SDXL+ControlNet(canny+depth)+IP-Adapter로
 # 기존 mood_library 레퍼런스를 스타일/구조 가이드 삼아 후보 이미지 N장 생성
 #
-# Colab GPU 전제. 로컬(CPU-only)에서는 이 모듈을 import는 할 수 있지만
+# 로컬 RTX 5090(32GB VRAM) 전제. CPU-only 환경에서는 이 모듈을 import는 할 수 있지만
 # _load_pipeline() 이후 실제 생성 호출은 diffusers/torch GPU 환경이 필요함.
 from __future__ import annotations
 
@@ -105,9 +105,8 @@ def _get_detectors():
 
 
 def _free_detectors():
-    # canny/depth 전처리기 + SDXL 파이프라인(IP-Adapter 포함)을 동시에 CPU에 올려두면
-    # Colab 무료 T4(시스템 RAM ~12.7GB)에서 OOM으로 세션이 죽는다.
-    # 가이드 추출이 끝나면 전처리기를 메모리에서 내려서 피크 사용량을 줄인다.
+    # 가이드 추출이 끝나면 canny/depth 전처리기를 GPU 메모리에서 내려서
+    # SDXL 파이프라인 로드 전에 VRAM 피크 사용량을 줄인다.
     _detector_cache.clear()
     gc.collect()
     try:
@@ -194,13 +193,9 @@ def _load_pipeline():
         weight_name=IP_ADAPTER_WEIGHT_NAME,
     )
     pipe.set_ip_adapter_scale(IP_ADAPTER_SCALE)
-    # 이전에 "tuple object has no attribute shape" 에러가 난 건 offload 자체 문제가 아니라
-    # StableDiffusionXLControlNetUnionPipeline이 IP-Adapter를 지원 안 해서였음. 표준
-    # ControlNet 파이프라인(IP-Adapter 정식 지원)으로 바꿨으니 offload를 다시 사용해서
-    # T4 VRAM(14.56GB)에 SDXL+ControlNet 2개+IP-Adapter가 한번에 다 안 올라가는 문제를 해결.
-    # (load_ip_adapter 이후에 호출해야 함 — 순서 중요)
-    pipe.enable_model_cpu_offload()
-    pipe.enable_vae_slicing()  # VAE 디코딩 피크 메모리 절감 (UNet 어텐션과 무관해 안전)
+    # RTX 5090(32GB VRAM)은 SDXL+ControlNet 2개+IP-Adapter를 전부 GPU에 올려도
+    # 여유가 충분해서 CPU 오프로드(T4 14.56GB 대응용 우회책)가 필요 없음 — 직접 cuda로 이동해 속도 확보.
+    pipe.to("cuda")
 
     _pipeline_cache = pipe
     return pipe

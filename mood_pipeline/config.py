@@ -92,7 +92,7 @@ SLUG_MAP = {
 # ============================================================
 # Model 1 이미지 생성 (SDXL + ControlNet(canny+depth) + IP-Adapter)
 # ============================================================
-# Colab GPU 전제 — 로컬 CPU 환경에서는 import만 되고 실제 파이프라인은 안 돌아감
+# 로컬 RTX 5090(32GB VRAM) 전제. CPU-only 환경에서는 import만 되고 실제 파이프라인은 안 돌아감
 
 # SDXL 베이스 모델
 SDXL_BASE_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
@@ -113,15 +113,13 @@ IP_ADAPTER_SCALE = 0.3
 # Depth 전처리 모델 (controlnet_aux)
 DEPTH_DETECTOR_MODEL_ID = "lllyasviel/Annotators"
 
-# 가이드(canny/depth) 이미지 캐시 폴더 — Colab에서는 config 임포트 후
-# mood_pipeline.config.GENERATION_CACHE_DIR = Path("/content/drive/MyDrive/.../guides") 로 덮어써서 Drive에 영구 저장
+# 가이드(canny/depth) 이미지 캐시 폴더 — 로컬 디스크에 영구 저장 (세션 간 재사용)
 GENERATION_CACHE_DIR = DATA_DIR / "generation_cache" / "guides"
-# 생성된 후보 이미지 + 메타데이터 저장 폴더 (역시 Colab에서 Drive 경로로 덮어쓰기 권장)
+# 생성된 후보 이미지 + 메타데이터 저장 폴더
 GENERATION_OUTPUT_DIR = DATA_DIR / "generation_cache" / "outputs"
 
-# T4(14.56GB 가용 VRAM) 기준: SDXL+ControlNetUnion+IP-Adapter 가중치만 fp16으로
-# ~14GB를 써서 1024 해상도는 활성화 메모리 여유가 거의 없어(OOM) 768로 낮춤
-GENERATION_IMAGE_SIZE = 768
+# RTX 5090(32GB VRAM) 기준: SDXL 네이티브 해상도인 1024에서도 활성화 메모리 여유가 충분함
+GENERATION_IMAGE_SIZE = 1024
 DEFAULT_NUM_CANDIDATES = 4
 DEFAULT_INFERENCE_STEPS = 30
 

@@ -113,6 +113,12 @@ IP_ADAPTER_SCALE = 0.3
 # Depth 전처리 모델 (controlnet_aux)
 DEPTH_DETECTOR_MODEL_ID = "lllyasviel/Annotators"
 
+# 레퍼런스 사진(오늘의집 등 크롤링 원본)에 박힌 워터마크/캡션 텍스트의 가장자리를
+# canny가 그대로 주워서 SDXL이 그 자리에 글자 모양을 그려 넣는 문제 방지용으로 threshold를 높임
+# (약한/가는 엣지인 글자 획은 걸러지고, 가구·벽 등 굵은 구조선만 남도록).
+CANNY_LOW_THRESHOLD = 150
+CANNY_HIGH_THRESHOLD = 250
+
 # 가이드(canny/depth) 이미지 캐시 폴더 — 로컬 디스크에 영구 저장 (세션 간 재사용)
 GENERATION_CACHE_DIR = DATA_DIR / "generation_cache" / "guides"
 # 생성된 후보 이미지 + 메타데이터 저장 폴더
@@ -125,7 +131,9 @@ DEFAULT_INFERENCE_STEPS = 30
 
 BASE_NEGATIVE_PROMPT = (
     "blurry, cartoon, illustration, distorted, low quality, oversaturated, "
-    "watermark, text, logo, extra walls, warped perspective, "
+    "watermark, text, logo, caption, subtitle, letters, characters, alphabet, "
+    "korean text, english text, writing, typography, signature, username, "
+    "extra walls, warped perspective, "
     "cluttered, mismatched furniture, illogical furniture placement, "
     "floating furniture, furniture overlapping, impossible room layout, "
     "random unrelated objects, extra plants, extra decorations not mentioned"

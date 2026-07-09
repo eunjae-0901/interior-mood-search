@@ -20,6 +20,8 @@ import numpy as np
 
 from .config import (
     BASE_NEGATIVE_PROMPT,
+    CANNY_HIGH_THRESHOLD,
+    CANNY_LOW_THRESHOLD,
     CONTROLNET_CANNY_MODEL_ID,
     CONTROLNET_DEPTH_MODEL_ID,
     DEFAULT_GEN_PRESET,
@@ -128,7 +130,9 @@ class GuideExtractor:
 
     def _cache_key(self, image_path: Path) -> str:
         digest = hashlib.md5(image_path.read_bytes()).hexdigest()[:16]
-        return f"{image_path.stem}_{digest}"
+        # canny threshold를 키에 포함시켜서, threshold를 바꾸면(워터마크 텍스트 필터링 등)
+        # 예전 threshold로 뽑아둔 캐시를 자동으로 무효화하고 다시 추출하게 함.
+        return f"{image_path.stem}_{digest}_c{CANNY_LOW_THRESHOLD}-{CANNY_HIGH_THRESHOLD}"
 
     def extract(self, image_path: Path) -> dict:
         from PIL import Image
@@ -147,7 +151,9 @@ class GuideExtractor:
         img = Image.open(image_path).convert("RGB").resize((self.image_size, self.image_size))
         canny_detector, depth_detector = _get_detectors()
 
-        canny_img = canny_detector(img, low_threshold=100, high_threshold=200)
+        canny_img = canny_detector(
+            img, low_threshold=CANNY_LOW_THRESHOLD, high_threshold=CANNY_HIGH_THRESHOLD
+        )
         depth_img = depth_detector(img)
 
         canny_img.save(canny_path)

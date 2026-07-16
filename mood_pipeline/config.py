@@ -92,7 +92,7 @@ SLUG_MAP = {
 # ============================================================
 # Model 1 이미지 생성 (SDXL + ControlNet(canny+depth) + IP-Adapter)
 # ============================================================
-# 로컬 RTX 5090(32GB VRAM) 전제. CPU-only 환경에서는 import만 되고 실제 파이프라인은 안 돌아감
+# 로컬 GPU(CUDA) 환경 전제. CPU-only 환경에서는 import만 되고 실제 파이프라인은 안 돌아감
 
 # SDXL 베이스 모델
 SDXL_BASE_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
@@ -124,7 +124,7 @@ GENERATION_CACHE_DIR = DATA_DIR / "generation_cache" / "guides"
 # 생성된 후보 이미지 + 메타데이터 저장 폴더
 GENERATION_OUTPUT_DIR = DATA_DIR / "generation_cache" / "outputs"
 
-# RTX 5090(32GB VRAM) 기준: SDXL 네이티브 해상도인 1024에서도 활성화 메모리 여유가 충분함
+# SDXL 네이티브 해상도(1024) 기본값. VRAM이 부족한 GPU에서는 OOM 방지를 위해 낮춰서 사용 (예: 768)
 GENERATION_IMAGE_SIZE = 1024
 DEFAULT_NUM_CANDIDATES = 4
 DEFAULT_INFERENCE_STEPS = 30

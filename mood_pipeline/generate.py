@@ -1,7 +1,7 @@
 # 사용자 텍스트 + 방 크기(WxDxH) → SDXL+ControlNet(canny+depth)+IP-Adapter로
 # 기존 mood_library 레퍼런스를 스타일/구조 가이드 삼아 후보 이미지 N장 생성
 #
-# 로컬 RTX 5090(32GB VRAM) 전제. CPU-only 환경에서는 이 모듈을 import는 할 수 있지만
+# 로컬 GPU(CUDA) 환경 전제. CPU-only 환경에서는 이 모듈을 import는 할 수 있지만
 # _load_pipeline() 이후 실제 생성 호출은 diffusers/torch GPU 환경이 필요함.
 from __future__ import annotations
 
@@ -199,8 +199,9 @@ def _load_pipeline():
         weight_name=IP_ADAPTER_WEIGHT_NAME,
     )
     pipe.set_ip_adapter_scale(IP_ADAPTER_SCALE)
-    # RTX 5090(32GB VRAM)은 SDXL+ControlNet 2개+IP-Adapter를 전부 GPU에 올려도
-    # 여유가 충분해서 CPU 오프로드(T4 14.56GB 대응용 우회책)가 필요 없음 — 직접 cuda로 이동해 속도 확보.
+    # VRAM이 넉넉하면(대략 16GB 이상) SDXL+ControlNet 2개+IP-Adapter를 전부 GPU에 올려도
+    # 여유가 있어 직접 cuda로 이동하는 쪽이 더 빠름. VRAM이 부족한 GPU에서 OOM이 나면
+    # 아래 줄을 pipe.enable_model_cpu_offload()로 바꿔서 메모리와 속도를 맞바꿀 것.
     pipe.to("cuda")
 
     _pipeline_cache = pipe
@@ -352,7 +353,7 @@ def generate_candidates(
     refs = _select_reference_images(prompt_en, mood_folders, num_candidates, exclude_ref_paths)
 
     # 1단계: canny/depth 가이드를 전부 먼저 뽑고 전처리기(Midas 등)를 메모리에서 내림.
-    # 전처리기 + SDXL 파이프라인을 동시에 CPU에 들고 있으면 Colab 무료 T4에서 RAM이 터짐.
+    # 전처리기 + SDXL 파이프라인을 동시에 메모리에 들고 있으면 VRAM/RAM이 부족한 환경에서 OOM이 날 수 있음.
     extractor = GuideExtractor()
     guides_by_ref = [extractor.extract(MOOD_LIBRARY_DIR / ref["path"]) for ref in refs]
     _free_detectors()

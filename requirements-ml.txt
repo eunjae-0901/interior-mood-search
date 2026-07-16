@@ -1,5 +1,6 @@
-# RTX 5090(Blackwell, sm_120)은 CUDA 12.8+ 지원 torch 빌드가 필요.
-# pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128 로 먼저 설치 확인 권장
+# GPU 사용 시 보유한 GPU/CUDA 버전에 맞는 torch 빌드를 설치하세요.
+# 최신 GPU(예: Blackwell 아키텍처)는 최신 CUDA 지원 빌드가 필요할 수 있습니다.
+# 설치 명령은 https://pytorch.org/get-started/locally/ 에서 GPU/CUDA 버전에 맞게 확인
 torch
 torchvision
 transformers
@@ -12,7 +13,7 @@ matplotlib
 tqdm
 deep-translator
 
-# Model 1 이미지 생성 (SDXL + ControlNet(canny+depth) + IP-Adapter) — 로컬 GPU(RTX 5090) 전용
+# Model 1 이미지 생성 (SDXL + ControlNet(canny+depth) + IP-Adapter) — 로컬 GPU 전용
 diffusers>=0.31.0
 accelerate
 safetensors
